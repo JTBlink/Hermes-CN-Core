@@ -80,6 +80,23 @@ def test_runtime_workflow_python_satisfies_project_requirement():
     )
 
 
+def test_linux_runtime_builder_uses_ubuntu_22_04_glibc_baseline():
+    """Linux runtime must run inside Desktop's Ubuntu 22.04 installers.
+
+    Building Python 3.14 on ubuntu-latest/24.04 produced a libpython requiring
+    GLIBC_2.38, while the Desktop Linux baseline only provides GLIBC_2.35.
+    """
+    assert re.search(
+        r"- runner:\s*ubuntu-22\.04\s+platform:\s*linux\s+arch:\s*x64",
+        _workflow_text(),
+    ), "Linux runtime builds must stay pinned to the Ubuntu 22.04 baseline"
+
+
+def test_runtime_workflow_pins_python_3_14_patch_release():
+    """Frozen runtimes must not silently change Python between rebuilds."""
+    assert 'python-version: "3.14.6"' in _workflow_text()
+
+
 def test_cn_desktop_extra_bundles_every_desktop_backend():
     """cn-desktop must pre-bake all backends the frozen runtime exposes."""
     extra = _cn_desktop_extra()
