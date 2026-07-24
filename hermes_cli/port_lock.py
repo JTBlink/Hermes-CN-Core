@@ -193,6 +193,16 @@ else:
 # case without adding per-process complexity.
 _local_lock = threading.Lock()
 _local_claims: set[int] = set()
+_DESKTOP_LOCK_OWNER_ENV = "HERMES_PORT_LOCK_OWNER_PID"
+
+
+def _desktop_lock_owner_pid() -> Optional[int]:
+    """Return the desktop process that pre-claimed managed-runtime ports."""
+    try:
+        owner_pid = int(os.environ.get(_DESKTOP_LOCK_OWNER_ENV, ""))
+    except (TypeError, ValueError):
+        return None
+    return owner_pid if owner_pid > 0 else None
 
 
 def try_claim_port(
@@ -237,6 +247,22 @@ def try_claim_port(
 
         # Lock is held. Check whether the owner is still alive (stale lock).
         stale_owner = _read_lock_owner(path)
+        desktop_owner = _desktop_lock_owner_pid()
+        if (
+            desktop_owner is not None
+            and stale_owner == desktop_owner
+            and _pid_is_running(desktop_owner)
+        ):
+            # The Tauri desktop reserves the whole dashboard port set before
+            # spawning this managed runtime. Treat its live lock as our own so
+            # the child and all descendants inherit the same reservation.
+            try:
+                handle.close()
+            except Exception:
+                pass
+            _local_claims.add(port)
+            return PortLock(port, path, None)
+
         if stale_owner is not None and not _pid_is_running(stale_owner):
             # Break stale lock by re-acquiring after closing the failed handle.
             try:
